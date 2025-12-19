@@ -1,0 +1,11 @@
+{
+  "identifier": "default",
+  "permissions": [
+    "core:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "global-shortcut:allow-register",
+    "store:allow-get",
+    "store:allow-set"
+  ]
+}
