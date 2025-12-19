@@ -15,6 +15,20 @@
         "title": "fixtypo",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "duck",
+        "title": "",
+        "url": "duck.html",
+        "width": 400,
+        "height": 400,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "resizable": false,
+        "shadow": false
       }
     ],
     "security": {

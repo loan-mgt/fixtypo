@@ -7,7 +7,7 @@ fn greet(name: &str) -> String {
 use enigo::{Enigo, Key, Keyboard, Settings};
 use serde_json::json;
 use tauri::menu::{Menu, MenuItem};
-use tauri::{AppHandle, Manager, Runtime, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WindowEvent};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
 use tauri_plugin_notification::NotificationExt;
@@ -16,6 +16,57 @@ use tauri_plugin_store::StoreExt;
 #[tauri::command]
 async fn run_ai_fix<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     println!("Starting AI fix...");
+
+    // Show duck animation overlay
+    if let Some(duck_window) = app.get_webview_window("duck") {
+        println!("Duck window found!");
+        // Position bottom-right above taskbar
+        if let Ok(monitors) = duck_window.available_monitors() {
+            if let Some(primary) = monitors.first() {
+                let screen_size = primary.size();
+                let x = screen_size.width as i32 - 450;
+                let y = screen_size.height as i32 - 500;
+                println!("Positioning duck at ({}, {})", x, y);
+                let _ = duck_window.set_position(PhysicalPosition::new(x, y));
+            }
+        }
+        match duck_window.show() {
+            Ok(_) => println!("Duck window shown successfully"),
+            Err(e) => println!("Failed to show duck window: {:?}", e),
+        }
+        match app.emit_to("duck", "animation-phase", "start") {
+            Ok(_) => println!("Emitted animation-phase start"),
+            Err(e) => println!("Failed to emit to duck: {:?}", e),
+        }
+    } else {
+        println!("Duck window NOT found!");
+    }
+
+    // Track start time for minimum display duration
+    let start_time = std::time::Instant::now();
+
+    // Run the main logic, capturing result
+    let result = run_ai_fix_inner(&app).await;
+
+    // Ensure minimum display time (intro ~750ms + at least 2 running cycles ~600ms = ~1350ms)
+    let min_display_time = std::time::Duration::from_millis(1500);
+    let elapsed = start_time.elapsed();
+    if elapsed < min_display_time {
+        std::thread::sleep(min_display_time - elapsed);
+    }
+
+    // Always hide duck window after completion (success or error)
+    if let Some(duck_window) = app.get_webview_window("duck") {
+        let _ = app.emit_to("duck", "animation-phase", "finish");
+        // Wait for outro animation to complete (~600ms for 4 frames at 150ms each)
+        std::thread::sleep(std::time::Duration::from_millis(700));
+        let _ = duck_window.hide();
+    }
+
+    result
+}
+
+async fn run_ai_fix_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     // 1. Get Config from Store
     let stores = app.store("settings.json").map_err(|e| e.to_string())?;
 
