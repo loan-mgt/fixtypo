@@ -1,6 +1,6 @@
 # FixTypo 🪄
 
-**FixTypo** uses AI to instantly correct or rewrite text anywhere on your computer. Just select text and press **`Alt+V`**.
+**FixTypo** uses AI to instantly correct or rewrite text anywhere on your computer. Just select text and press **`Ctrl+Q`**.
 
 ## ✨ Features
 
@@ -8,7 +8,7 @@
 -   **AI-Powered:** Uses Google Gemini to fix typos or change tone.
 -   **Turbo Mode:** Automatically copies and pastes the result.
 
-## � Get Started
+## 🚀 Get Started
 
 1.  **Install dependencies:**
     ```bash
@@ -22,10 +22,10 @@
     -   Enter your **Gemini API Key**.
     -   Click **Save**.
 
-## � How to Use
+## 🎮 How to Use
 
 1.  Highlight text in any window.
-2.  Press **`Alt+V`**.
+2.  Press **`Ctrl+Q`**.
 3.  Wait a moment for the magic to happen!
 
 ## 📦 Build

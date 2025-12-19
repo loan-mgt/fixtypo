@@ -80,7 +80,7 @@ async fn run_ai_fix<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     let response = client
         .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={}", api_key))
         .json(&json!({
-            "contents": [{ "parts": [{ "text": format!("{} \n\n {}", preprompt, clipboard_text) }] }],
+            "contents": [{ "parts": [{ "text": format!("{} \n\n INSTRUCTIONS:\n1. Fix typos and grammar.\n2. STRICTLY PRESERVE all original newlines, paragraph breaks, and indentation.\n3. Do NOT merge lines.\n\nINPUT TEXT:\n```\n{}\n```", preprompt, clipboard_text) }] }],
              "generationConfig": {
                 "responseMimeType": "application/json",
                 "responseSchema": {
@@ -121,19 +121,15 @@ async fn run_ai_fix<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
             content_text.to_string()
         };
 
+    // Clean up potentially double-escaped newlines from the model
+    // Sometimes models output literal "\n" strings instead of actual newlines in the JSON logic
+    let fixed_text = fixed_text.replace("\\n", "\n").replace("\\r", "");
+
     println!("Received response. Writing to clipboard.");
 
     // 4. Write back to Clipboard
     app.clipboard()
         .write_text(fixed_text)
-        .map_err(|e| e.to_string())?;
-
-    // 5. Notification
-    app.notification()
-        .builder()
-        .title("Typo Fixed")
-        .body("Text corrected and copied to clipboard.")
-        .show()
         .map_err(|e| e.to_string())?;
 
     // 6. If Turbo Mode, simulate Ctrl+V to paste
@@ -149,6 +145,14 @@ async fn run_ai_fix<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
             .key(Key::Control, enigo::Direction::Release)
             .map_err(|e| e.to_string())?;
     }
+
+    // 5. Notification (Show after pasting to avoid stealing focus)
+    app.notification()
+        .builder()
+        .title("Typo Fixed")
+        .body("Text corrected and copied to clipboard.")
+        .show()
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -197,12 +201,12 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Register Alt+V Shortcut
-            let fix_shortcut = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
+            // Register Alt+Z Shortcut
+            let fix_shortcut = Shortcut::new(Some(Modifiers::CONTROL), Code::KeyQ);
             app.global_shortcut()
                 .on_shortcut(fix_shortcut, |app, _shortcut, event| {
                     if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        println!("Shortcut Alt+V pressed!");
+                        println!("Shortcut Ctrl+Q pressed!");
                         let handle = app.clone();
                         tauri::async_runtime::spawn(async move {
                             if let Err(e) = run_ai_fix(handle).await {

@@ -79,7 +79,7 @@ function App() {
         </label>
       </div>
       <button onClick={save} disabled={!store}>Save Settings</button>
-      <p className="hint">Select text and press <code>Alt+V</code> to fix.</p>
+      <p className="hint">Select text and press <code>Ctrl+Q</code> to fix.</p>
     </div>
   );
 }
