@@ -1,11 +1,18 @@
 {
   "identifier": "default",
+  "comment": "All windows",
+  "windows": [
+    "*"
+  ],
   "permissions": [
     "core:default",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
     "global-shortcut:allow-register",
     "store:allow-get",
-    "store:allow-set"
+    "store:allow-set",
+    "store:allow-save",
+    "store:allow-load",
+    "notification:default"
   ]
 }
