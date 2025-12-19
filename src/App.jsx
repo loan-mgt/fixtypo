@@ -24,26 +24,35 @@ function App() {
         if (tm !== undefined) setTurboMode(tm);
       } catch (err) {
         console.error("Failed to load settings:", err);
-        alert("Failed to load store: " + err);
       }
     };
     loadSettings();
   }, []);
 
+  const [saveStatus, setSaveStatus] = useState("idle"); // idle, saving, success, error
+
+  useEffect(() => {
+    if (saveStatus === "success" || saveStatus === "error") {
+      const timer = setTimeout(() => setSaveStatus("idle"), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveStatus]);
+
   const save = async () => {
     if (!store) {
-      alert("Store is not ready yet. Please wait or restart the app.");
+      console.warn("Store not ready");
       return;
     }
+    setSaveStatus("saving");
     try {
       await store.set("api_key", apiKey);
       await store.set("preprompt", preprompt);
       await store.set("turbo_mode", turboMode);
       await store.save();
-      alert("Saved!");
+      setSaveStatus("success");
     } catch (e) {
       console.error("Save failed:", e);
-      alert("Save failed: " + e);
+      setSaveStatus("error");
     }
   };
 
@@ -78,7 +87,13 @@ function App() {
           Turbo Mode (auto copy/paste selected text)
         </label>
       </div>
-      <button onClick={save} disabled={!store}>Save Settings</button>
+      <button
+        onClick={save}
+        disabled={!store || saveStatus === "saving"}
+        className={saveStatus === "success" ? "saved" : saveStatus === "error" ? "error" : ""}
+      >
+        {saveStatus === "saving" ? "Saving..." : saveStatus === "success" ? "Saved!" : saveStatus === "error" ? "Error" : "Save Settings"}
+      </button>
       <p className="hint">Select text and press <code>Ctrl+Q</code> to fix.</p>
     </div>
   );
