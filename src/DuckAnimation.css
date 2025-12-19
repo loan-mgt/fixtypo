@@ -1,21 +1,19 @@
 .duck-container {
     position: fixed;
-    bottom: 60px;
-    right: 20px;
-    width: 300px;
-    height: 300px;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     pointer-events: none;
     z-index: 9999;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(255, 0, 0, 0.3);
-    /* DEBUG: Red tint to see container */
 }
 
 .duck-sprite {
-    width: 256px;
-    height: 256px;
+    width: 64px;
+    height: 64px;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
 }
