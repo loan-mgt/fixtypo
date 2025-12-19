@@ -1,15 +1,36 @@
-# Tauri + React
+# FixTypo 🪄
 
-This template should help get you started developing with Tauri and React in Vite.
+**FixTypo** uses AI to instantly correct or rewrite text anywhere on your computer. Just select text and press **`Alt+V`**.
 
-## Recommended IDE Setup
+## ✨ Features
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+-   **Global Shortcut:** Works in any app (browser, editor, notes).
+-   **AI-Powered:** Uses Google Gemini to fix typos or change tone.
+-   **Turbo Mode:** Automatically copies and pastes the result.
 
-## How to Run
+## � Get Started
 
-To run the application in development mode:
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+2.  **Run the app:**
+    ```bash
+    npm run tauri dev
+    ```
+3.  **Setup:**
+    -   Enter your **Gemini API Key**.
+    -   Click **Save**.
 
+## � How to Use
+
+1.  Highlight text in any window.
+2.  Press **`Alt+V`**.
+3.  Wait a moment for the magic to happen!
+
+## 📦 Build
+
+To create an installer:
 ```bash
-npm run tauri dev
+npm run tauri build
 ```
