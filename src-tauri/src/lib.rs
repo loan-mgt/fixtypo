@@ -159,6 +159,16 @@ async fn run_ai_fix_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| GEMINI_MODEL.to_string());
 
+    let provider = stores
+        .get("provider")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "gemini".to_string());
+
+    let anthropic_api_key = stores
+        .get("anthropic_api_key")
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+
     let show_duck = stores
         .get("show_duck")
         .and_then(|v| v.as_bool())
@@ -170,8 +180,8 @@ async fn run_ai_fix_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
         .unwrap_or(true);
 
     println!(
-        "Turbo: {}, Model: {}, Duck: {}, Notif: {}",
-        turbo_mode, model, show_duck, show_notification
+        "Turbo: {}, Model: {}, Provider: {}, Duck: {}, Notif: {}",
+        turbo_mode, model, provider, show_duck, show_notification
     );
 
     // Show duck animation overlay (if enabled)
@@ -208,6 +218,8 @@ async fn run_ai_fix_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
     let result = run_ai_fix_logic(
         &app,
         &api_key,
+        &anthropic_api_key,
+        &provider,
         &preprompt,
         &model,
         turbo_mode,
@@ -243,12 +255,14 @@ async fn run_ai_fix_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> 
 async fn run_ai_fix_logic<R: Runtime>(
     app: &AppHandle<R>,
     api_key: &str,
+    anthropic_api_key: &str,
+    provider: &str,
     preprompt: &str,
     model: &str,
     turbo_mode: bool,
     show_notification: bool,
 ) -> Result<(), String> {
-    println!("Turbo Mode: {}, Model: {}", turbo_mode, model);
+    println!("Turbo Mode: {}, Model: {}, Provider: {}", turbo_mode, model, provider);
 
     // 2. If Turbo Mode, simulate Ctrl+C to copy selection
     if turbo_mode {
@@ -276,51 +290,84 @@ async fn run_ai_fix_logic<R: Runtime>(
     let clipboard_text = app.clipboard().read_text().unwrap_or_default();
     println!("Clipboard text length: {}", clipboard_text.len());
 
-    // 3. Call Google Gemini API (using reqwest)
+    // 3. Call AI API based on provider
     let client = reqwest::Client::new();
-    println!("Sending request to {}...", model);
-    let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
-        .json(&json!({
-            "contents": [{ "parts": [{ "text": format!("{} \n\n INSTRUCTIONS:\n1. Fix typos and grammar.\n2. STRICTLY PRESERVE all original newlines, paragraph breaks, and indentation.\n3. Do NOT merge lines.\n\nINPUT TEXT:\n```\n{}\n```", preprompt, clipboard_text) }] }],
-             "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": {
-                    "type": "object",
-                    "properties": {
-                        "fixed_text": { "type": "string" }
+    println!("Sending request to {} via {}...", model, provider);
+
+    let content_text = if provider == "anthropic" {
+        let active_key = if !anthropic_api_key.is_empty() { anthropic_api_key } else { api_key };
+        let response = client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", active_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&json!({
+                "model": model,
+                "max_tokens": 2048,
+                "messages": [{
+                    "role": "user",
+                    "content": format!("{} \n\n INSTRUCTIONS:\n1. Fix typos and grammar.\n2. STRICTLY PRESERVE all original newlines, paragraph breaks, and indentation.\n3. Do NOT merge lines.\n4. Return ONLY valid JSON with the format: {{\"fixed_text\": \"...\"}}\n\nINPUT TEXT:\n```\n{}\n```", preprompt, clipboard_text)
+                }]
+            }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let json_res: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+
+        if let Some(error) = json_res.get("error") {
+            println!("API Error: {:?}", error);
+            return Err(format!("API Error: {:?}", error));
+        }
+
+        json_res["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    } else {
+        // Default: Gemini
+        let response = client
+            .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
+            .json(&json!({
+                "contents": [{ "parts": [{ "text": format!("{} \n\n INSTRUCTIONS:\n1. Fix typos and grammar.\n2. STRICTLY PRESERVE all original newlines, paragraph breaks, and indentation.\n3. Do NOT merge lines.\n\nINPUT TEXT:\n```\n{}\n```", preprompt, clipboard_text) }] }],
+                 "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "responseSchema": {
+                        "type": "object",
+                        "properties": {
+                            "fixed_text": { "type": "string" }
+                        }
                     }
                 }
-            }
-        }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+            }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
 
-    let json_res: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+        let json_res: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
 
-    if let Some(error) = json_res.get("error") {
-        println!("API Error: {:?}", error);
-        return Err(format!("API Error: {:?}", error));
-    }
+        if let Some(error) = json_res.get("error") {
+            println!("API Error: {:?}", error);
+            return Err(format!("API Error: {:?}", error));
+        }
 
-    // Parse the structured output
-    // The model returns a stringified JSON in the text field when responseMimeType is application/json
-    let content_text = json_res["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .unwrap_or("");
+        json_res["candidates"][0]["content"]["parts"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    };
 
     println!("Raw API Response Text: {}", content_text);
 
     let fixed_text =
-        if let Ok(parsed_inner) = serde_json::from_str::<serde_json::Value>(content_text) {
+        if let Ok(parsed_inner) = serde_json::from_str::<serde_json::Value>(&content_text) {
             parsed_inner["fixed_text"]
                 .as_str()
-                .unwrap_or(content_text)
+                .unwrap_or(&content_text)
                 .to_string()
         } else {
             // Fallback if parsing fails (shouldn't happen with valid structured output)
-            content_text.to_string()
+            content_text.clone()
         };
 
     // Clean up potentially double-escaped newlines from the model
@@ -420,14 +467,15 @@ pub fn run() {
                     }
                 })?;
 
-            // Show main window only if API key is NOT set (window starts hidden)
+            // Show main window only if no API key is set (window starts hidden)
             let should_show = if let Ok(store) = app.store("settings.json") {
-                if let Some(key) = store.get("api_key") {
-                    // Hide if key exists and is not empty
-                    !key.as_str().map(|s| !s.is_empty()).unwrap_or(false)
-                } else {
-                    true // No key, show window
-                }
+                let gemini_key_set = store.get("api_key")
+                    .and_then(|v| v.as_str().map(|s| !s.is_empty()))
+                    .unwrap_or(false);
+                let anthropic_key_set = store.get("anthropic_api_key")
+                    .and_then(|v| v.as_str().map(|s| !s.is_empty()))
+                    .unwrap_or(false);
+                !(gemini_key_set || anthropic_key_set)
             } else {
                 true // No store, show window
             };
