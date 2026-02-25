@@ -10,14 +10,18 @@ import { Switch } from "./components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import { Separator } from "./components/ui/separator";
 import { Badge } from "./components/ui/badge";
-import { Sparkles, Zap, Bell, Save, Check, AlertCircle, Wand2, KeyRound } from "lucide-react";
+import { Sparkles, Zap, Bell, Save, Check, AlertCircle, Wand2, KeyRound, Settings, X } from "lucide-react";
 import "./App.css";
+
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
 function App() {
   const [apiKey, setApiKey] = useState("");
+  const [anthropicApiKey, setAnthropicApiKey] = useState("");
+  const [activeProvider, setActiveProvider] = useState("gemini");
   const [preprompt, setPreprompt] = useState("Fix typos:");
   const [turboMode, setTurboMode] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_GEMINI_MODEL);
   const [models, setModels] = useState([]);
   const [showDuck, setShowDuck] = useState(true);
   const [showNotification, setShowNotification] = useState(false);
@@ -26,7 +30,12 @@ function App() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState("idle"); // idle, saving, success, error
 
-  // Fetch models function
+  // Provider key dialog state
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [dialogProvider, setDialogProvider] = useState(null);
+  const [dialogApiKey, setDialogApiKey] = useState("");
+
+  // Fetch Gemini models
   const fetchModels = async (key) => {
     if (!key || key.length < 10) return;
     setModelsLoading(true);
@@ -35,6 +44,23 @@ function App() {
       setModels(result);
     } catch (err) {
       console.error("Failed to fetch models:", err);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  // Fetch Anthropic models
+  const fetchAnthropicModels = async (key, autoSelectFirst = false) => {
+    if (!key || key.length < 10) return;
+    setModelsLoading(true);
+    try {
+      const result = await invoke("fetch_anthropic_models", { apiKey: key });
+      setModels(result);
+      if (autoSelectFirst && result.length > 0) {
+        setSelectedModel(result[0]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch Anthropic models:", err);
     } finally {
       setModelsLoading(false);
     }
@@ -49,6 +75,12 @@ function App() {
 
         const val = await _store.get("api_key");
         if (val) setApiKey(val);
+
+        const anthropicKey = await _store.get("anthropic_api_key");
+        if (anthropicKey) setAnthropicApiKey(anthropicKey);
+
+        const provider = await _store.get("provider");
+        if (provider) setActiveProvider(provider);
 
         const pp = await _store.get("preprompt");
         if (pp) setPreprompt(pp);
@@ -65,8 +97,10 @@ function App() {
         const notif = await _store.get("show_notification");
         if (notif !== undefined) setShowNotification(notif);
 
-        // Auto-fetch models if we have an API key
-        if (val) {
+        // Auto-fetch models for the active provider
+        if (provider === "anthropic" && anthropicKey) {
+          fetchAnthropicModels(anthropicKey);
+        } else if (val) {
           fetchModels(val);
         }
       } catch (err) {
@@ -86,6 +120,16 @@ function App() {
     }
   }, [apiKey]);
 
+  // Auto-fetch Anthropic models when Anthropic API key changes (debounced)
+  useEffect(() => {
+    if (anthropicApiKey && anthropicApiKey.length >= 10) {
+      const debounce = setTimeout(() => {
+        fetchAnthropicModels(anthropicApiKey);
+      }, 800);
+      return () => clearTimeout(debounce);
+    }
+  }, [anthropicApiKey]);
+
   // Auto-clear save status
   useEffect(() => {
     if (saveStatus === "success" || saveStatus === "error") {
@@ -103,6 +147,8 @@ function App() {
     setSaveStatus("saving");
     try {
       await store.set("api_key", apiKey);
+      await store.set("anthropic_api_key", anthropicApiKey);
+      await store.set("provider", activeProvider);
       await store.set("preprompt", preprompt);
       await store.set("turbo_mode", turboMode);
       await store.set("model", selectedModel);
@@ -116,8 +162,90 @@ function App() {
     }
   };
 
+  // Provider chip handlers
+  const handleProviderChipClick = (providerId) => {
+    const key = providerId === "gemini" ? apiKey : anthropicApiKey;
+    if (!key) {
+      setDialogProvider(providerId);
+      setDialogApiKey("");
+      setShowApiKeyDialog(true);
+    } else {
+      setActiveProvider(providerId);
+      if (providerId === "gemini") {
+        setSelectedModel(DEFAULT_GEMINI_MODEL);
+        fetchModels(apiKey);
+      } else {
+        fetchAnthropicModels(anthropicApiKey, true);
+      }
+    }
+  };
+
+  const handleSettingsGearClick = (providerId) => {
+    setDialogProvider(providerId);
+    setDialogApiKey(providerId === "gemini" ? apiKey : anthropicApiKey);
+    setShowApiKeyDialog(true);
+  };
+
+  const handleDialogSave = () => {
+    if (dialogProvider === "gemini") {
+      setApiKey(dialogApiKey);
+      fetchModels(dialogApiKey);
+      setSelectedModel(DEFAULT_GEMINI_MODEL);
+    } else {
+      setAnthropicApiKey(dialogApiKey);
+      fetchAnthropicModels(dialogApiKey, true);
+    }
+    setActiveProvider(dialogProvider);
+    setShowApiKeyDialog(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 pb-24" style={{ fontFamily: 'var(--font-family-body)' }}>
+      {/* API Key Dialog */}
+      {showApiKeyDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>
+                  {dialogProvider === "gemini" ? "Google Gemini" : "Anthropic Claude"} API Key
+                </CardTitle>
+                <button onClick={() => setShowApiKeyDialog(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <CardDescription>
+                Enter your API key to activate this provider
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="dialog-api-key">API Key</Label>
+                <Input
+                  id="dialog-api-key"
+                  type="password"
+                  value={dialogApiKey}
+                  onChange={(e) => setDialogApiKey(e.target.value)}
+                  placeholder={dialogProvider === "gemini" ? "Enter your Gemini API key..." : "Enter your Anthropic API key..."}
+                  onKeyDown={(e) => e.key === "Enter" && dialogApiKey && handleDialogSave()}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {dialogProvider === "gemini" ? (
+                    <>Get a key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Google AI Studio</a></>
+                  ) : (
+                    <>Get a key at <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">Anthropic Console</a></>
+                  )}
+                </p>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setShowApiKeyDialog(false)}>Cancel</Button>
+                <Button onClick={handleDialogSave} disabled={!dialogApiKey}>Save &amp; Activate</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       <div className="max-w-3xl mx-auto p-8 space-y-6">
         {/* Header */}
         <div className="text-center space-y-2">
@@ -139,29 +267,42 @@ function App() {
               <CardTitle>API Configuration</CardTitle>
             </div>
             <CardDescription>
-              Connect to Gemini AI to power your typo-fixing magic
+              Choose your AI provider to power your typo-fixing magic
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Provider Chips */}
             <div className="space-y-2">
-              <Label htmlFor="api-key">Gemini API Key</Label>
-              <Input
-                id="api-key"
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter your Gemini API key..."
-              />
+              <Label>AI Provider</Label>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { id: "gemini", name: "Google Gemini", key: apiKey },
+                  { id: "anthropic", name: "Anthropic Claude", key: anthropicApiKey },
+                ].map((provider) => (
+                  <button
+                    key={provider.id}
+                    onClick={() => handleProviderChipClick(provider.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors cursor-pointer ${
+                      activeProvider === provider.id
+                        ? "bg-purple-100 border-purple-400 text-purple-700"
+                        : "bg-white border-gray-200 text-gray-600 hover:border-purple-300"
+                    }`}
+                  >
+                    {activeProvider === provider.id && <Check className="w-3.5 h-3.5" />}
+                    {provider.name}
+                    {provider.key && (
+                      <Settings
+                        className="w-3.5 h-3.5 text-gray-400 hover:text-gray-600"
+                        onClick={(e) => { e.stopPropagation(); handleSettingsGearClick(provider.id); }}
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">
-                Don't have an API key?{" "}
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-purple-600 hover:underline"
-                >
-                  Get one here
-                </a>
+                {activeProvider === "gemini"
+                  ? "Using Google Gemini — rate limits may apply"
+                  : "Using Anthropic Claude — may incur usage costs"}
               </p>
             </div>
 
@@ -172,10 +313,18 @@ function App() {
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="gemini-2.5-flash">gemini-2.5-flash</SelectItem>
-                  {models.filter(m => m !== "gemini-2.5-flash").map(m => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
+                  {activeProvider === "gemini" ? (
+                    <>
+                      <SelectItem value={DEFAULT_GEMINI_MODEL}>{DEFAULT_GEMINI_MODEL}</SelectItem>
+                      {models.filter(m => m !== DEFAULT_GEMINI_MODEL).map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </>
+                  ) : (
+                    models.map(m => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
