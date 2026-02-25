@@ -49,6 +49,33 @@ async fn fetch_models(api_key: String) -> Result<Vec<String>, String> {
     Ok(models)
 }
 
+#[tauri::command]
+async fn fetch_anthropic_models(api_key: String) -> Result<Vec<String>, String> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://api.anthropic.com/v1/models")
+        .header("x-api-key", &api_key)
+        .header("anthropic-version", "2023-06-01")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let json_res: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+
+    if let Some(error) = json_res.get("error") {
+        return Err(format!("API Error: {:?}", error));
+    }
+
+    let models: Vec<String> = json_res["data"]
+        .as_array()
+        .unwrap_or(&vec![])
+        .iter()
+        .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+        .collect();
+
+    Ok(models)
+}
+
 use enigo::{Enigo, Key, Keyboard, Settings};
 use serde_json::json;
 use tauri::menu::{Menu, MenuItem};
@@ -491,7 +518,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet, run_ai_fix, fetch_models])
+        .invoke_handler(tauri::generate_handler![greet, run_ai_fix, fetch_models, fetch_anthropic_models])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {

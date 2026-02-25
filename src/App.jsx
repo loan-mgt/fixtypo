@@ -13,15 +13,7 @@ import { Badge } from "./components/ui/badge";
 import { Sparkles, Zap, Bell, Save, Check, AlertCircle, Wand2, KeyRound, Settings, X } from "lucide-react";
 import "./App.css";
 
-const ANTHROPIC_MODELS = [
-  "claude-opus-4-5",
-  "claude-sonnet-4-5",
-  "claude-haiku-4-5",
-  "claude-3-5-sonnet-20241022",
-  "claude-3-5-haiku-20241022",
-];
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-5";
 
 function App() {
   const [apiKey, setApiKey] = useState("");
@@ -43,7 +35,7 @@ function App() {
   const [dialogProvider, setDialogProvider] = useState(null);
   const [dialogApiKey, setDialogApiKey] = useState("");
 
-  // Fetch models function
+  // Fetch Gemini models
   const fetchModels = async (key) => {
     if (!key || key.length < 10) return;
     setModelsLoading(true);
@@ -52,6 +44,23 @@ function App() {
       setModels(result);
     } catch (err) {
       console.error("Failed to fetch models:", err);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  // Fetch Anthropic models
+  const fetchAnthropicModels = async (key, autoSelectFirst = false) => {
+    if (!key || key.length < 10) return;
+    setModelsLoading(true);
+    try {
+      const result = await invoke("fetch_anthropic_models", { apiKey: key });
+      setModels(result);
+      if (autoSelectFirst && result.length > 0) {
+        setSelectedModel(result[0]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch Anthropic models:", err);
     } finally {
       setModelsLoading(false);
     }
@@ -88,8 +97,10 @@ function App() {
         const notif = await _store.get("show_notification");
         if (notif !== undefined) setShowNotification(notif);
 
-        // Auto-fetch models if we have a Gemini API key
-        if (val) {
+        // Auto-fetch models for the active provider
+        if (provider === "anthropic" && anthropicKey) {
+          fetchAnthropicModels(anthropicKey);
+        } else if (val) {
           fetchModels(val);
         }
       } catch (err) {
@@ -108,6 +119,16 @@ function App() {
       return () => clearTimeout(debounce);
     }
   }, [apiKey]);
+
+  // Auto-fetch Anthropic models when Anthropic API key changes (debounced)
+  useEffect(() => {
+    if (anthropicApiKey && anthropicApiKey.length >= 10) {
+      const debounce = setTimeout(() => {
+        fetchAnthropicModels(anthropicApiKey);
+      }, 800);
+      return () => clearTimeout(debounce);
+    }
+  }, [anthropicApiKey]);
 
   // Auto-clear save status
   useEffect(() => {
@@ -154,7 +175,7 @@ function App() {
         setSelectedModel(DEFAULT_GEMINI_MODEL);
         fetchModels(apiKey);
       } else {
-        setSelectedModel(DEFAULT_ANTHROPIC_MODEL);
+        fetchAnthropicModels(anthropicApiKey, true);
       }
     }
   };
@@ -169,11 +190,12 @@ function App() {
     if (dialogProvider === "gemini") {
       setApiKey(dialogApiKey);
       fetchModels(dialogApiKey);
+      setSelectedModel(DEFAULT_GEMINI_MODEL);
     } else {
       setAnthropicApiKey(dialogApiKey);
+      fetchAnthropicModels(dialogApiKey, true);
     }
     setActiveProvider(dialogProvider);
-    setSelectedModel(dialogProvider === "gemini" ? DEFAULT_GEMINI_MODEL : DEFAULT_ANTHROPIC_MODEL);
     setShowApiKeyDialog(false);
   };
 
@@ -299,7 +321,7 @@ function App() {
                       ))}
                     </>
                   ) : (
-                    ANTHROPIC_MODELS.map(m => (
+                    models.map(m => (
                       <SelectItem key={m} value={m}>{m}</SelectItem>
                     ))
                   )}
