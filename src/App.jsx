@@ -25,6 +25,7 @@ function App() {
   const [models, setModels] = useState([]);
   const [showDuck, setShowDuck] = useState(true);
   const [showNotification, setShowNotification] = useState(false);
+  const [debugLogs, setDebugLogs] = useState([]);
 
   const [store, setStore] = useState(null);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -35,15 +36,23 @@ function App() {
   const [dialogProvider, setDialogProvider] = useState(null);
   const [dialogApiKey, setDialogApiKey] = useState("");
 
+  const addDebugLog = (message) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugLogs((prev) => [...prev, `[${timestamp}] ${message}`].slice(-200));
+  };
+
   // Fetch Gemini models
   const fetchModels = async (key) => {
     if (!key || key.length < 10) return;
     setModelsLoading(true);
+    addDebugLog("Fetching Gemini models");
     try {
       const result = await invoke("fetch_models", { apiKey: key });
       setModels(result);
+      addDebugLog(`Fetched ${result.length} Gemini model(s)`);
     } catch (err) {
       console.error("Failed to fetch models:", err);
+      addDebugLog(`Failed to fetch Gemini models: ${String(err)}`);
     } finally {
       setModelsLoading(false);
     }
@@ -53,14 +62,17 @@ function App() {
   const fetchAnthropicModels = async (key, autoSelectFirst = false) => {
     if (!key || key.length < 10) return;
     setModelsLoading(true);
+    addDebugLog("Fetching Anthropic models");
     try {
       const result = await invoke("fetch_anthropic_models", { apiKey: key });
       setModels(result);
+      addDebugLog(`Fetched ${result.length} Anthropic model(s)`);
       if (autoSelectFirst && result.length > 0) {
         setSelectedModel(result[0]);
       }
     } catch (err) {
       console.error("Failed to fetch Anthropic models:", err);
+      addDebugLog(`Failed to fetch Anthropic models: ${String(err)}`);
     } finally {
       setModelsLoading(false);
     }
@@ -69,6 +81,7 @@ function App() {
   // Load settings
   useEffect(() => {
     const loadSettings = async () => {
+      addDebugLog("Loading application settings");
       try {
         const _store = await load("settings.json", { autoSave: false });
         setStore(_store);
@@ -103,8 +116,10 @@ function App() {
         } else if (val) {
           fetchModels(val);
         }
+        addDebugLog("Application settings loaded");
       } catch (err) {
         console.error("Failed to load settings:", err);
+        addDebugLog(`Failed to load settings: ${String(err)}`);
       }
     };
     loadSettings();
@@ -142,9 +157,11 @@ function App() {
   const save = async () => {
     if (!store) {
       console.warn("Store not ready");
+      addDebugLog("Save skipped: store not ready");
       return;
     }
     setSaveStatus("saving");
+    addDebugLog("Saving settings");
     try {
       await store.set("api_key", apiKey);
       await store.set("anthropic_api_key", anthropicApiKey);
@@ -156,9 +173,11 @@ function App() {
       await store.set("show_notification", showNotification);
       await store.save();
       setSaveStatus("success");
+      addDebugLog("Settings saved successfully");
     } catch (e) {
       console.error("Save failed:", e);
       setSaveStatus("error");
+      addDebugLog(`Save failed: ${String(e)}`);
     }
   };
 
@@ -425,6 +444,33 @@ function App() {
                 checked={showNotification}
                 onCheckedChange={setShowNotification}
               />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Debugging */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-purple-600" />
+              <CardTitle>Debugging</CardTitle>
+            </div>
+            <CardDescription>
+              View application logs to debug API calls
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Textarea
+              readOnly
+              value={debugLogs.join("\n")}
+              placeholder="Application logs will appear here..."
+              rows={8}
+              className="font-mono text-xs"
+            />
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setDebugLogs([])}>
+                Clear logs
+              </Button>
             </div>
           </CardContent>
         </Card>
